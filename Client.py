@@ -11,6 +11,7 @@ import threading
 import json
 import StateMap
 READ_SZ = 1024 * 1024 * 16
+WORKERS = 32
 SHARE_IDENTIFIER = {}
 class WorkQ:
 	def __init__(self):
@@ -18,8 +19,8 @@ class WorkQ:
 		self.queue = Queue.Queue()
 		self.faulted = False
 
-	def start(self, wcount=8):
-		for i in range(4):
+	def start(self, wcount=WORKERS):
+		for i in range(wcount):
 			th = threading.Thread(target=self.handler)
 			self.threads.append(th)
 			th.start()

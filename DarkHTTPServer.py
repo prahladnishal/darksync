@@ -8,6 +8,7 @@ import Queue
 import xmlrpclib
 import time
 import logger
+MT_THREADS = 16
 class HTTPSocket:
 	def __init__(self, fd):
 		self.fd = fd
@@ -108,7 +109,7 @@ class Handler(threading.Thread):
 	def run(self):
 		try:
 			self.httpsock = HTTPSocket(self.sock)
-			for i in range(8):
+			for i in range(MT_THREADS):
 				th = threading.Thread(target=self.handler, args=(self.httpsock, ))
 				self.workers.append(th)
 				th.start()

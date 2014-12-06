@@ -103,10 +103,11 @@ def parse_config(fname):
 if __name__ == '__main__':
 	if len(sys.argv) < 3:
 		print "Usage: python Server config_fname port"
-	else:
-		config_fname = sys.argv[1]
-		parse_config(config_fname)
-		port = int(sys.argv[2])
-		httpserver = DarkHTTPServer.HTTPServer('0.0.0.0', port)
-		register_methods(httpserver)
-		httpserver.start()
+		os._exit(0)
+	
+	config_fname = sys.argv[1]
+	parse_config(config_fname)
+	port = int(sys.argv[2])
+	httpserver = DarkHTTPServer.HTTPServer('0.0.0.0', port)
+	register_methods(httpserver)
+	httpserver.start()
