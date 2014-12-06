@@ -8,10 +8,10 @@ import logger
 import base64
 import time
 import threading
-
+import json
 import StateMap
 READ_SZ = 1024 * 1024 * 16
-
+SHARE_IDENTIFIER = {}
 class WorkQ:
 	def __init__(self):
 		self.threads = []
@@ -52,22 +52,23 @@ class WorkQ:
 			th.join()
 
 class SyncFile:
-	def __init__(self, client, fname, basepath, wqueue=None):
+	def __init__(self, shareid, client, fname, basepath, wqueue=None):
+		self.shareid = shareid
 		self.fname = fname
 		self.basepath = basepath
 		self.client = client
 		self.wqueue = wqueue
 		self.fault = None
+		self.fd = None
 
 	def sync(self):
 		try:
 			absname = os.path.join(self.basepath, self.fname)
 			Log.info('Syncing file %s, %s', self.fname, absname)
-			self.fd = open(absname, 'r+')
 			statinfo = os.stat(absname)
 			size = statinfo.st_size
-			self.client.v1_start_file(self.fname, size)
-
+			self.client.v1_upload_file(self.shareid, self.fname, size)
+			self.fd = open(absname, 'r+')
 			done = 0
 			while done < size:
 				if self.fault:
@@ -80,25 +81,30 @@ class SyncFile:
 			Log.error('Failed sync of file %s: %s', self.fname, str(fault))
 			Log.traceback(fault)
 			raise
+		finally:
+			if self.fd:
+				self.fd.close()
+
 
 	def sync_data(self, offset, data):
 		try:
 			data = base64.b64encode(data)
-			self.client.v1_sync_file_data(self.fname, offset, len(data), data)
+			self.client.v1_upload_file_data(self.shareid, self.fname, offset, len(data), data)
 		except Exception, fault:
 			raise
 
 	def commit(self):
-		self.client.v1_commit_file(self.fname)
-		self.fd.close()
+		self.client.v1_commit_file(self.shareid, self.fname)
 
 class SyncFolder:
-	def __init__(self, path, httpclient):
+	def __init__(self, shareid, path, httpclient):
 		self.path = path
 		self.httpclient = httpclient
+		self.shareid = shareid
 
 	def sync(self):
 		try:
+			Log.info('Syncing folder %s:%s', self.shareid, self.path)
 			self.dosync()
 		except Exception, fault:
 			Log.traceback(fault)
@@ -106,24 +112,37 @@ class SyncFolder:
 
 	def dosync(self):
 		state_map = StateMap.StateMap(self.path)
-		other_state_map = self.httpclient.v1_get_state_map(self.path)
+		other_state_map = self.httpclient.v1_get_state_map(self.shareid)
 		state_map.create_state_map()
 		gen = state_map.get_change(other_state_map)
 		self.workerQ = WorkQ()
 		self.workerQ.start()
 		for change_type, fname in gen:
-			s = SyncFile(self.httpclient, fname, self.path)
+			s = SyncFile(self.shareid, self.httpclient, fname, self.path)
 			self.workerQ.put(s.sync)
 		self.workerQ.join()
 
+def parse_config(fname):
+	global SHARE_IDENTIFIER
+	data = open(fname).read()
+	d = json.loads(data)
+	SHARE_IDENTIFIER = d
+	print type(d), d
 
 if __name__ == '__main__':
-	foldername = sys.argv[1]
-	httpclient = DarkHTTPServer.HTTPClient('192.168.0.101', 8080)
+	if len(sys.argv) < 4:
+		print "Usage: python Client.py config_fname serverip port"
+		os._exit(0)
+	fname = sys.argv[1]
+	parse_config(fname)
+	ip, port = sys.argv[2], int(sys.argv[3])
+	httpclient = DarkHTTPServer.HTTPClient(ip, port)
 	try:
-		t1 = time.time()
-		syncfile = SyncFolder(foldername, httpclient)
-		syncfile.sync()
+		for shareid, foldername in SHARE_IDENTIFIER.items():
+			t1 = time.time()
+			syncfile = SyncFolder(shareid, foldername, httpclient)
+			syncfile.sync()
+			Log.info('Time taken to complete folder%s:%s, %s secs', shareid, foldername, time.time()-t1)
 	finally:
 		httpclient.shutdown()
 	print 'total time taken', time.time() - t1

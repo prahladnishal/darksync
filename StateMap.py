@@ -28,8 +28,14 @@ class StateMap:
     
     def get_change(self, ostate):
         for key, value in self.state.items():
+            #If file is not present in other side
             if key not in ostate:
                 #del self.state[]
+                yield CHANGE_ADD, value[0]
+                continue
+            #If file is present but size is not same
+            ovalue = ostate[key]
+            if value[1] <> ovalue[1]:
                 yield CHANGE_ADD, value[0]
 
     def get_state(self):
